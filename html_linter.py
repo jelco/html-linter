@@ -62,6 +62,10 @@ class UnicodeMixin(object):
             return self.__unicode__().encode('utf8')
 
 
+def teamcity_escape(text):
+    return str(text).replace('|', '||').replace('\'', '|\'')
+
+
 # pylint: disable=too-few-public-methods,missing-docstring
 
 
@@ -88,6 +92,20 @@ class Message(UnicodeMixin):
 
     def __repr__(self):
         return str(self)
+
+    def as_teamcity_inspection(self, filename):
+        return (
+            "##teamcity[inspectionType id='{typeId}' category='HTML5 Linter' " + 
+            "name='{category}' description='{description}']\n" + 
+            "##teamcity[inspection typeId='{typeId}' message='{message}' " + 
+            "file='{filename}' line='{line}' SEVERITY='{level}']").format(
+                typeId="HTML-%s" % self.__class__.__name__,
+                category=self.category,
+                description=teamcity_escape(self.description),
+                message=teamcity_escape(self.message),
+                filename=teamcity_escape(filename),
+                line=self.line,
+                level=self.level.upper())
 
 
 class DocumentTypeMessage(Message):
@@ -1028,7 +1046,7 @@ class HTML5Linter(HTMLParser.HTMLParser):
         return None
 
 
-def lint(html, exclude=None):
+def lint(html, filename=None, exclude=None, print_filename=False, in_teamcity=False):
     """Lints and HTML5 file.
 
     Args:
@@ -1037,8 +1055,23 @@ def lint(html, exclude=None):
                output.
     """
     exclude = exclude or []
-    messages = [m.__unicode__() for m in HTML5Linter(html).messages
+    filename = filename or ''
+    kwargs = {}
+    prefix = ''
+
+    if in_teamcity:
+        format_method = 'as_teamcity_inspection'
+        kwargs['filename'] = filename
+    else:
+        format_method = '__unicode__'
+
+        if filename and print_filename:
+            prefix = '%s:' % filename
+
+    messages = ["%s%s" % (prefix, getattr(m, format_method)(**kwargs))
+                for m in HTML5Linter(html).messages
                 if not isinstance(m, tuple(exclude))]
+
     return '\n'.join(messages)
 
 
@@ -1074,7 +1107,6 @@ def main(options):
     if sys.version_info[0] < 3:
         sys.stdout = codecs.getwriter('utf-8')(sys.stdout)
 
-    print_filename = options.get('--printfilename')
     disable_str = options.get('--disable') or ''
     disable = disable_str.split(',')
 
@@ -1085,17 +1117,19 @@ def main(options):
         sys.stderr.write(__doc__)
         return 1
 
-    exclude = [_DISABLE_MAP[d] for d in disable if d in _DISABLE_MAP]
+    lint_kwargs = {
+        'in_teamcity': 'TEAMCITY_PROJECT_NAME' in os.environ,
+        'print_filename': options.get('--printfilename'),
+        'exclude': [_DISABLE_MAP[d] for d in disable if d in _DISABLE_MAP]
+    }
 
     filenames = options.get('FILENAME', [])
 
     results = False
     for filename in filenames:
         clean_html = template_remover.clean(io.open(filename).read())
-        result = lint(clean_html, exclude=exclude)
+        result = lint(clean_html, filename=filename, **lint_kwargs)
         if result:
-            if print_filename:
-                result = "{}:{}".format(filename, result)
             print(result)
             results = True
 
