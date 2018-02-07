@@ -63,7 +63,10 @@ class UnicodeMixin(object):
 
 
 def teamcity_escape(text):
-    return str(text).replace('|', '||').replace('\'', '|\'')
+    if type(text) is tuple:
+        text = ''.join(text)
+
+    return text.replace('|', '||').replace('\'', '|\'')
 
 
 # pylint: disable=too-few-public-methods,missing-docstring

@@ -615,6 +615,44 @@ class TestHTML5LinterMain(unittest.TestCase):
         self.assertEquals(exit_code, 2)
 
 
+class TestHTML5LinterMainTeamcity(TestHTML5LinterMain):
+    @classmethod
+    def setUpClass(cls):
+        os.environ['TEAMCITY_PROJECT_NAME'] = 'tests'
+
+        super(TestHTML5LinterMainTeamcity, cls).setUpClass()
+
+    def test_invalid(self):
+        files = [self.invalid]
+        output, exit_code = self.call_main(FILENAME=files)
+        self.assertEquals(2 * 49, len(output))
+        self.assertEquals(exit_code, 2)
+
+    def test_multiple(self):
+        files = [self.valid, self.invalid, self.more_invalid]
+        output, exit_code = self.call_main(FILENAME=files)
+        self.assertEquals(2 * 50, len(output))
+        self.assertEquals(exit_code, 2)
+
+    def test_printfilename(self):
+        files = [self.more_invalid]
+        output, exit_code = self.call_main(
+            **{'FILENAME': files, '--printfilename': True})
+        self.assertEquals(2 * 1, len(output))
+        self.assertTrue(self.more_invalid in output[1])
+        self.assertEquals(exit_code, 2)
+
+    def test_no_printfilename(self):
+        files = [self.more_invalid]
+        # In TeamCity output the filename should be present
+        # regardless of the --printfilename option
+        output, exit_code = self.call_main(
+            **{'FILENAME': files, '--printfilename': False})
+        self.assertEquals(2 * 1, len(output))
+        self.assertTrue(self.more_invalid in output[1])
+        self.assertEquals(exit_code, 2)
+
+
 class TestHTML5LinterUtils(unittest.TestCase):
     @staticmethod
     def get_linter(last_data, last_data_position):
